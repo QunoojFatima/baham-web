@@ -46,7 +46,7 @@ class UserProfile(models.Model):
     void_reason = models.CharField(null=True, max_length=1024, blank=True)
     uuid = models.UUIDField(default=uuid4, editable=False, unique=True)
 
-    def __str__(self):
+    def _str_(self):
         return self.user.username
     
     def save(self, created_by=None, *args, **kwargs):
@@ -110,7 +110,7 @@ class VehicleModel(models.Model):
     class Meta:
         db_table = "baham_vehicle_model"
 
-    def __str__(self):
+    def _str_(self):
         return f"{self.vendor} {self.model}"
     
     def save(self, created_by=None, *args, **kwargs):
@@ -171,10 +171,13 @@ class Vehicle(models.Model):
     void_reason = models.CharField(null=True, max_length=1024, blank=True)
     uuid = models.UUIDField(default=uuid4, editable=False, unique=True)
 
-    def __str__(self):
+    def _str_(self):
         return f"{self.model.vendor} {self.model.model} {self.colour}"
     
     def save(self, created_by=None, *args, **kwargs):
+        owned_vehicles = Vehicle.objects.filter(owner=self.owner).exclude(status=VehicleStatus.REMOVED)
+        if owned_vehicles:
+            raise Exception('Can not register due to arleady registered for this owner')
         self.date_created = timezone.now()
         if not created_by:
             created_by = User.objects.get(pk=1)
@@ -231,10 +234,19 @@ class Contract(models.Model):
     void_reason = models.CharField(null=True, max_length=1024, blank=True)
     uuid = models.UUIDField(default=uuid4, editable=False, unique=True)
     
-    def __str__(self):
+    def _str_(self):
         return f"{self}" # TODO: Complete this
     
     def save(self, created_by=None, *args, **kwargs):
+        vehicle_contracts = Contract.objects.filter(vehicle=self.vehicle)
+        if len(vehicle_contracts) == self.vehicle.model.capacity:
+            raise Exception('Vehicle Cannot Have Contracts More Than Its Capacity')
+        total_share = self.fuel_share + self.maintenance_share
+        if total_share > 100:
+            raise Exception('Total Share Cannot Exceed Rs. 100')
+        companion_contracts = Contract.objects.filter(companion=self.companion)
+        if len(companion_contracts) > 0:
+            raise Exception('One Companion Cannot Have Multiple Contracts')
         self.date_created = timezone.now()
         if not created_by:
             created_by = User.objects.get(pk=1)
@@ -242,6 +254,9 @@ class Contract(models.Model):
         super().save()
     
     def update(self, updated_by=None, *args, **kwargs):
+        total_share = self.fuel_share + self.maintenance_share
+        if total_share > 100:
+            raise Exception('Total Share Cannot Exceed Rs. 100')
         self.date_updated = timezone.now()
         if (not updated_by):
             updated_by = User.objects.get(pk=1)
